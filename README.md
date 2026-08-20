@@ -96,6 +96,82 @@ build/reports/jacoco/test/html/index.html
 
 The configured minimum coverage is `80%`.
 
+## Load Testing
+
+The repository includes a plugin-free Apache JMeter plan:
+
+```text
+jmeter/account-transactions-load-test.jmx
+```
+
+The scenario creates one account per virtual user, extracts the returned `accountId`, and then repeatedly creates transactions against that account at the configured target throughput.
+
+Start the service before running the test:
+
+```bash
+docker compose up --build
+```
+
+Run a 300 TPS test and generate an HTML report:
+
+```bash
+jmeter -n \
+  -t jmeter/account-transactions-load-test.jmx \
+  -l /tmp/account-transactions-300tps.jtl \
+  -e -o jmeter/report-300tps \
+  -JHOST=localhost \
+  -JPORT=8080 \
+  -JTARGET_TPS=300 \
+  -JTHREADS=4000 \
+  -JRAMP_UP_SECONDS=30 \
+  -JDURATION_SECONDS=300
+```
+
+Open the generated report:
+
+```text
+jmeter/report-300tps/index.html
+```
+
+Useful JMeter properties:
+
+| Property | Default | Description |
+| --- | ---: | --- |
+| `HOST` | `localhost` | API host. |
+| `PORT` | `8080` | API port. |
+| `PROTOCOL` | `http` | API protocol. |
+| `TARGET_TPS` | `700` | Target transaction throughput per second. |
+| `THREADS` | `4000` | Number of virtual users. |
+| `RAMP_UP_SECONDS` | `30` | Time used to start all virtual users. |
+| `DURATION_SECONDS` | `300` | Test duration. |
+| `MAX_RESPONSE_MS` | `5000` | Duration assertion threshold. |
+| `CURRENCY` | `EUR` | Transaction currency and first account balance currency. |
+| `SECOND_CURRENCY` | `USD` | Second account balance currency. |
+| `AMOUNT` | `100.00` | Transaction amount. |
+| `DIRECTION` | `IN` | Transaction direction. |
+
+Existing local report summaries:
+
+| Report | Total samples | Error rate | Total throughput | Transaction throughput | Transaction p95 | Transaction p99 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `jmeter/report-200tps` | 63,514 | 0.0% | 211.60/sec | 199.72/sec | 15 ms | 19 ms |
+| `jmeter/report-250tps` | 79,247 | 0.0% | 257.44/sec | 245.99/sec | 15 ms | 24 ms |
+| `jmeter/report-300tps` | 104,621 | 0.0% | 329.07/sec | 321.11/sec | 13 ms | 17 ms |
+| `jmeter/report-450tps` | 153,381 | 0.0% | 505.78/sec | 495.86/sec | 615 ms | 1,218.99 ms |
+| `jmeter/report-650tps` | 155,864 | 0.0% | 494.44/sec | 484.56/sec | 1,340.95 ms | 1,916.98 ms |
+| `jmeter/report-700tps` | 295,194 | 75.74% | 913.65/sec | 910.24/sec | 6,054 ms | 6,120 ms |
+
+Observed capacity from these local reports:
+
+- `300 TPS` is healthy: no errors and low transaction latency.
+- `450 TPS` succeeds without errors, but tail latency is already high.
+- `650 TPS` succeeds without errors, but the service does not reach the requested transaction rate and p99 is close to 2 seconds.
+- `700 TPS` overloads the service: transaction error rate is `76.62%`, with p95 around 6 seconds.
+
+For the current local setup, treat `300 TPS` as a safe low-latency target and roughly `450-500 TPS` as the practical upper range if higher tail latency is acceptable.
+
+The `POST Create Account` sampler runs once per virtual user during ramp-up, so total report throughput includes both account creation and transaction requests. Use the `POST Create Transaction` row in `statistics.json` when evaluating the transaction endpoint specifically.
+
 ## API
 
 All endpoints accept and return JSON.

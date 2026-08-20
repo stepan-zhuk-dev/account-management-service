@@ -124,7 +124,7 @@
         </HTTPSamplerProxy>
         <hashTree>
           <ConstantThroughputTimer guiclass="TestBeanGUI" testclass="ConstantThroughputTimer" testname="Transaction Target TPS">
-            <stringProp name="throughput">${__groovy((props.get(&apos;TARGET_TPS&apos;) ?: &apos;750&apos;).toDouble() * 60)}</stringProp>
+            <stringProp name="throughput">${__groovy((props.get(&apos;TARGET_TPS&apos;) ?: &apos;700&apos;).toDouble() * 60)}</stringProp>
             <intProp name="calcMode">4</intProp>
           </ConstantThroughputTimer>
           <hashTree/>
