@@ -1,0 +1,142 @@
+name: account-management-service
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-ulimits: &default-ulimits
+  nofile:
+    soft: 65535
+    hard: 65535
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    command:
+      - postgres
+      - -c
+      - max_connections=200
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - effective_cache_size=1536MB
+      - -c
+      - work_mem=8MB
+      - -c
+      - maintenance_work_mem=128MB
+      - -c
+      - wal_buffers=16MB
+      - -c
+      - min_wal_size=1GB
+      - -c
+      - max_wal_size=4GB
+      - -c
+      - checkpoint_completion_target=0.9
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - effective_io_concurrency=200
+    environment:
+      POSTGRES_DB: banking
+      POSTGRES_USER: banking
+      POSTGRES_PASSWORD: banking
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U banking -d banking"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    shm_size: 256m
+    mem_limit: 2g
+    mem_reservation: 1g
+    ulimits: *default-ulimits
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    stop_grace_period: 60s
+    restart: unless-stopped
+    logging: *default-logging
+    networks:
+      - backend
+
+  rabbitmq:
+    image: rabbitmq:4.1-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: banking
+      RABBITMQ_DEFAULT_PASS: banking
+      RABBITMQ_DISK_FREE_LIMIT: 2GB
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "+sbwt none +sbwtdcpu none +sbwtdio none"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+    mem_limit: 1g
+    mem_reservation: 512m
+    ulimits: *default-ulimits
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    stop_grace_period: 60s
+    restart: unless-stopped
+    logging: *default-logging
+    networks:
+      - backend
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    init: true
+    mem_limit: 1536m
+    mem_reservation: 1g
+    ulimits: *default-ulimits
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/banking
+      DB_USERNAME: banking
+      DB_PASSWORD: banking
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: banking
+      RABBITMQ_PASSWORD: banking
+      SERVER_TOMCAT_THREADS_MAX: 200
+      SERVER_TOMCAT_THREADS_MIN_SPARE: 25
+      SERVER_TOMCAT_ACCEPT_COUNT: 500
+      SERVER_TOMCAT_MAX_CONNECTIONS: 4096
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: 40
+      SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: 20
+      SPRING_RABBITMQ_CACHE_CHANNEL_SIZE: 50
+      APP_OUTBOX_BATCH_SIZE: 500
+      APP_OUTBOX_POLL_INTERVAL: 50
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 35s
+    restart: unless-stopped
+    logging: *default-logging
+    networks:
+      - backend
+
+volumes:
+  postgres-data:
+  rabbitmq-data:
+
+networks:
+  backend:
+    driver: bridge
