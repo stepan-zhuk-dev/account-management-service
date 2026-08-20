@@ -1,26 +1,26 @@
-# Core Banking Service
+# Account Management Service
 
-Core Banking Service is a Spring Boot API for account creation, multi-currency balances, deposits, withdrawals, transaction history, and outbox event persistence.
+Spring Boot API for creating customer accounts, keeping multi-currency balances, recording deposits and withdrawals, returning transaction history, and persisting outbox events for downstream publishing.
 
 ## Features
 
-- Create accounts for customers.
-- Keep one balance per supported currency.
-- Add money with `IN` transactions.
-- Withdraw money with `OUT` transactions.
+- Create accounts with one balance per requested currency.
+- Deposit funds with `IN` transactions.
+- Withdraw funds with `OUT` transactions.
 - Reject withdrawals when the selected currency balance is too low.
-- Return transaction history by account.
-- Persist outbox messages for account, balance, and transaction changes.
+- Return account details and transaction history by public account ID.
+- Persist account, balance, and transaction events through the transactional outbox pattern.
+- Publish pending outbox events to RabbitMQ.
 
 ## Tech Stack
 
 - Java 21
 - Spring Boot 4
+- Gradle
 - MyBatis
 - PostgreSQL
 - Flyway
 - RabbitMQ
-- Gradle
 - JUnit 5
 - Testcontainers
 - JaCoCo
@@ -30,44 +30,45 @@ Core Banking Service is a Spring Boot API for account creation, multi-currency b
 - Java 21
 - Docker
 
-Docker is used for PostgreSQL, RabbitMQ, the local Compose environment, and integration tests.
+Docker is required for the local Compose environment and for integration tests that start PostgreSQL with Testcontainers.
 
 ## Run Locally
 
-Start PostgreSQL, RabbitMQ, and the service:
+Start PostgreSQL, RabbitMQ, and the application:
 
 ```bash
 docker compose up --build
 ```
 
-Service URLs:
+Local URLs:
 
 ```text
-API:       http://localhost:8080
-Health:    http://localhost:8080/actuator/health
-RabbitMQ:  http://localhost:15672
+API:              http://localhost:8080
+Health:           http://localhost:8080/actuator/health
+Liveness probe:   http://localhost:8080/actuator/health/liveness
+RabbitMQ UI:      http://localhost:15672
 ```
 
-RabbitMQ local credentials:
+RabbitMQ credentials:
 
 ```text
 username: banking
 password: banking
 ```
 
-Stop the environment:
+Stop containers:
 
 ```bash
 docker compose down
 ```
 
-Remove local PostgreSQL and RabbitMQ volumes too:
+Stop containers and remove PostgreSQL/RabbitMQ volumes:
 
 ```bash
 docker compose down -v
 ```
 
-## Run Tests
+## Build And Test
 
 Run all tests:
 
@@ -75,13 +76,19 @@ Run all tests:
 ./gradlew test
 ```
 
-Run tests with the coverage gate:
+Run tests and enforce the JaCoCo coverage gate:
 
 ```bash
 ./gradlew test jacocoTestCoverageVerification
 ```
 
-The coverage report is generated at:
+Build the application jar:
+
+```bash
+./gradlew bootJar
+```
+
+Coverage report:
 
 ```text
 build/reports/jacoco/test/html/index.html
@@ -91,7 +98,7 @@ The configured minimum coverage is `80%`.
 
 ## API
 
-All examples use JSON request and response bodies.
+All endpoints accept and return JSON.
 
 ### Create Account
 
@@ -238,7 +245,7 @@ Supported transaction directions:
 IN, OUT
 ```
 
-Important request rules:
+Request rules:
 
 - `customerId` must be a UUID.
 - `country` is required and must be 2 to 45 characters.
@@ -246,32 +253,50 @@ Important request rules:
 - `amount` must be greater than zero and can have up to 17 integer digits and 2 fractional digits.
 - `description` is required and can be up to 255 characters.
 
-Errors are returned as `application/problem+json` using Spring `ProblemDetail`. Common messages include:
+Errors are returned with Spring `ProblemDetail`. Common messages:
 
+- `Request validation failed`
+- `Malformed JSON`
 - `Invalid currency`
 - `Invalid direction`
-- `Invalid amount`
-- `Description missing`
-- `Request validation failed`
-- `Insufficient {currency} funds: available {available}, requested {requested}`
-- `Account {id} was not found`
+- `Invalid account`
+- `Account not found`
+- `Insufficient funds`
+
+Validation errors include an `errors` object keyed by request field.
 
 ## Configuration
 
 Default local values are defined in `src/main/resources/application.properties`.
 
-| Variable | Default |
-| --- | --- |
-| `DB_URL` | `jdbc:postgresql://localhost:5432/banking` |
-| `DB_USERNAME` | `banking` |
-| `DB_PASSWORD` | `banking` |
-| `RABBITMQ_HOST` | `localhost` |
-| `RABBITMQ_PORT` | `5672` |
-| `RABBITMQ_USERNAME` | `banking` |
-| `RABBITMQ_PASSWORD` | `banking` |
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `DB_URL` | `jdbc:postgresql://localhost:5432/banking` | PostgreSQL JDBC URL |
+| `DB_USERNAME` | `banking` | PostgreSQL username |
+| `DB_PASSWORD` | `banking` | PostgreSQL password |
+| `RABBITMQ_HOST` | `localhost` | RabbitMQ host |
+| `RABBITMQ_PORT` | `5672` | RabbitMQ AMQP port |
+| `RABBITMQ_USERNAME` | `banking` | RabbitMQ username |
+| `RABBITMQ_PASSWORD` | `banking` | RabbitMQ password |
+| `APP_OUTBOX_BATCH_SIZE` | `200` | Number of outbox rows processed per poll |
+| `APP_OUTBOX_POLL_INTERVAL` | `100` | Outbox polling delay in milliseconds |
 
-Flyway runs migrations from:
+Flyway migrations run from:
 
 ```text
 classpath:db/migration
+```
+
+The Compose profile overrides several server, datasource, RabbitMQ, and outbox settings for local container execution.
+
+## Outbox
+
+Domain changes are stored in `outbox_messages` in the same transaction as the account, balance, or transaction update. A scheduled publisher reads pending messages and sends them to RabbitMQ exchange `banking.events`.
+
+Event routing keys:
+
+```text
+account.created
+balance.updated
+transaction.created
 ```
