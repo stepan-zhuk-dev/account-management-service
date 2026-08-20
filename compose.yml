@@ -99,22 +99,20 @@ services:
     mem_reservation: 1g
     ulimits: *default-ulimits
     environment:
-      DB_URL: jdbc:postgresql://postgres:5432/banking
+      DB_URL: jdbc:postgresql://postgres:5432/banking?ApplicationName=account-management-service&tcpKeepAlive=true&reWriteBatchedInserts=true&preparedStatementCacheQueries=256&preparedStatementCacheSizeMiB=5&prepareThreshold=5
       DB_USERNAME: banking
       DB_PASSWORD: banking
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
       RABBITMQ_USERNAME: banking
       RABBITMQ_PASSWORD: banking
-      SERVER_TOMCAT_THREADS_MAX: 200
-      SERVER_TOMCAT_THREADS_MIN_SPARE: 25
+      SERVER_TOMCAT_THREADS_MAX: 120
+      SERVER_TOMCAT_THREADS_MIN_SPARE: 20
       SERVER_TOMCAT_ACCEPT_COUNT: 500
       SERVER_TOMCAT_MAX_CONNECTIONS: 4096
-      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: 40
-      SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: 20
       SPRING_RABBITMQ_CACHE_CHANNEL_SIZE: 50
-      APP_OUTBOX_BATCH_SIZE: 500
-      APP_OUTBOX_POLL_INTERVAL: 50
+      APP_OUTBOX_BATCH_SIZE: 100
+      APP_OUTBOX_POLL_INTERVAL: 100
     ports:
       - "8080:8080"
     depends_on:
