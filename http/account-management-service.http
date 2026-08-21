@@ -1,0 +1,113 @@
+@fallbackAccountId = 11111111-1111-1111-1111-111111111111
+
+### Health
+GET {{baseUrl}}/actuator/health
+Accept: application/json
+
+### Liveness
+GET {{baseUrl}}/actuator/health/liveness
+Accept: application/json
+
+### Create account
+POST {{baseUrl}}/api/v1/accounts
+Content-Type: application/json
+Accept: application/json
+
+{
+  "customerId": "{{$uuid}}",
+  "country": "Estonia",
+  "currencies": ["EUR", "USD"]
+}
+
+> {%
+    client.test("account was created", function () {
+        client.assert(response.status === 201, "Expected HTTP 201");
+        client.assert(response.body.accountId, "Expected accountId in response");
+    });
+
+    if (response.body.accountId) {
+        client.global.set("accountId", response.body.accountId);
+    }
+%}
+
+### Get created account
+GET {{baseUrl}}/api/v1/accounts/{{accountId}}
+Accept: application/json
+
+### Get fallback account
+GET {{baseUrl}}/api/v1/accounts/{{fallbackAccountId}}
+Accept: application/json
+
+### Deposit EUR
+POST {{baseUrl}}/api/v1/accounts/{{accountId}}/transactions
+Content-Type: application/json
+Accept: application/json
+
+{
+  "amount": 100.00,
+  "currency": "EUR",
+  "direction": "IN",
+  "description": "salary"
+}
+
+> {%
+    client.test("deposit was created", function () {
+        client.assert(response.status === 201, "Expected HTTP 201");
+        client.assert(response.body.transactionId, "Expected transactionId in response");
+    });
+
+    if (response.body.transactionId) {
+        client.global.set("transactionId", response.body.transactionId);
+    }
+%}
+
+### Withdraw EUR
+POST {{baseUrl}}/api/v1/accounts/{{accountId}}/transactions
+Content-Type: application/json
+Accept: application/json
+
+{
+  "amount": 40.25,
+  "currency": "EUR",
+  "direction": "OUT",
+  "description": "card payment"
+}
+
+### Get transaction history
+GET {{baseUrl}}/api/v1/accounts/{{accountId}}/transactions
+Accept: application/json
+
+### Create account - invalid empty currencies
+POST {{baseUrl}}/api/v1/accounts
+Content-Type: application/json
+Accept: application/json
+
+{
+  "customerId": "{{$uuid}}",
+  "country": "Estonia",
+  "currencies": []
+}
+
+### Create transaction - insufficient funds
+POST {{baseUrl}}/api/v1/accounts/{{accountId}}/transactions
+Content-Type: application/json
+Accept: application/json
+
+{
+  "amount": 999999.99,
+  "currency": "EUR",
+  "direction": "OUT",
+  "description": "large withdrawal"
+}
+
+### Create transaction - invalid currency
+POST {{baseUrl}}/api/v1/accounts/{{accountId}}/transactions
+Content-Type: application/json
+Accept: application/json
+
+{
+  "amount": 10.00,
+  "currency": "JPY",
+  "direction": "IN",
+  "description": "unsupported currency"
+}
